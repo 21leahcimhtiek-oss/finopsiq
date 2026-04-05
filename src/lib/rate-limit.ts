@@ -1,0 +1,29 @@
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+export const rateLimiter = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(100, "1 m"),
+  analytics: true,
+  prefix: "finopsiq:ratelimit",
+});
+
+export const aiRateLimiter = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(10, "1 m"),
+  analytics: true,
+  prefix: "finopsiq:ai-ratelimit",
+});
+
+export async function checkRateLimit(
+  identifier: string,
+  limiter: Ratelimit = rateLimiter
+): Promise<{ success: boolean; remaining: number; reset: number }> {
+  const { success, remaining, reset } = await limiter.limit(identifier);
+  return { success, remaining, reset };
+}

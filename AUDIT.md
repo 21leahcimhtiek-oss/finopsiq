@@ -1,56 +1,49 @@
-# FinOpsIQ — Security & Compliance Audit Checklist
+# FinOpsIQ Security Audit Checklist
 
 ## Authentication & Authorization
+- [ ] Supabase Auth with JWT tokens
+- [ ] Row-Level Security (RLS) enabled on all database tables
+- [ ] Organization-based access isolation verified
+- [ ] Role-based access control (owner/admin/member) enforced
+- [ ] Session expiry and refresh token rotation enabled
+- [ ] Auth middleware protecting all dashboard routes
 
-- [x] Supabase Auth with email/password and OAuth (Google, GitHub)
-- [x] Row Level Security (RLS) on all database tables — org-level isolation
-- [x] JWT validation on every API route via Supabase middleware
-- [x] Role-based access: `owner`, `admin`, `member`, `viewer`
-- [x] Team invite flow with email verification
-- [x] Session expiry and refresh token rotation
-
-## Data Security
-
-- [x] Cloud credentials encrypted at rest with AES-256-GCM before storage
-- [x] Encryption key stored in environment variable (never in DB)
-- [x] No cloud credentials logged or exposed in API responses
-- [x] Supabase service role key used only server-side
-- [x] All secrets in environment variables, never hardcoded
+## Data Encryption
+- [ ] Cloud credentials encrypted at rest before storage
+- [ ] TLS 1.3 enforced for all API communications
+- [ ] Supabase database encryption at rest enabled
+- [ ] Sensitive env vars stored in secrets manager (not in code)
+- [ ] No credentials in git history (pre-commit hooks)
 
 ## API Security
+- [ ] Rate limiting on all API routes (Upstash Redis)
+- [ ] Input validation with Zod on all POST/PATCH endpoints
+- [ ] SQL injection prevention via parameterized queries (Supabase client)
+- [ ] CORS restricted to known domains
+- [ ] Stripe webhook signature verification
+- [ ] Cron endpoints protected with secret header
 
-- [x] Rate limiting on all routes (60 req/min standard, 5 req/min AI endpoints)
-- [x] Zod input validation on all POST/PATCH routes
-- [x] Stripe webhook signature verification
-- [x] CORS headers configured in Next.js
-- [x] Security headers: X-Frame-Options, X-Content-Type-Options, Referrer-Policy
+## Rate Limiting
+- [ ] 100 req/min per user on general API routes
+- [ ] 10 req/min on AI-powered endpoints (waste scan, anomaly explain)
+- [ ] 5 req/min on auth endpoints
+- [ ] IP-based rate limiting for unauthenticated endpoints
 
-## Infrastructure
+## Dependency Audit
+- [ ] `npm audit` run and vulnerabilities addressed
+- [ ] Dependabot or Renovate enabled for automated updates
+- [ ] Lock file committed (package-lock.json)
+- [ ] No known CVEs in production dependencies
 
-- [x] HTTPS enforced (Vercel default)
-- [x] Environment variables never committed to git
-- [x] .env.example with no real values
-- [x] Sentry error tracking (no PII in events)
-- [x] Docker image uses non-root user
+## Secrets Management
+- [ ] All secrets stored as environment variables
+- [ ] .env files excluded from version control
+- [ ] Separate secrets for dev/staging/production
+- [ ] Secret rotation policy documented
+- [ ] Service role key only used server-side (never exposed to client)
 
-## Compliance Readiness
-
-- [ ] SOC 2 Type II — in progress (controls documented)
-- [x] GDPR — data deletion API available, no PII in cost records
-- [x] Data retention enforced by plan limits
-- [ ] HIPAA — not applicable (no PHI)
-- [ ] PCI DSS — Stripe handles all card data, no card data stored
-
-## Dependency Security
-
-- Run `npm audit` before each release
-- Dependabot enabled for automated security PRs
-- No known critical vulnerabilities at time of release
-
-## Incident Response
-
-1. Sentry alert fires → on-call engineer paged
-2. Assess scope (which orgs affected, data type)
-3. Contain: rotate affected credentials, disable compromised accounts
-4. Notify affected customers within 72 hours (GDPR requirement)
-5. Post-mortem published internally within 5 business days
+## Monitoring & Incident Response
+- [ ] Sentry error tracking configured
+- [ ] Alert on unusual spend spikes (anomaly detection)
+- [ ] Audit log for sensitive operations (account creation, member invite)
+- [ ] Incident response runbook documented

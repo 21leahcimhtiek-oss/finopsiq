@@ -1,38 +1,40 @@
-export type OrgPlan = "starter" | "pro" | "enterprise";
+export type OrgPlan = "team" | "business" | "enterprise";
+export type MemberRole = "owner" | "admin" | "member";
 export type CloudProvider = "aws" | "gcp" | "azure";
-export type AccountStatus = "active" | "inactive" | "error" | "pending";
-export type AnomalyStatus = "open" | "acknowledged" | "resolved";
-export type RecommendationStatus = "open" | "implementing" | "implemented" | "dismissed";
-export type OrgMemberRole = "owner" | "admin" | "member" | "viewer";
-export type BudgetPeriod = "monthly" | "quarterly" | "annual";
-export type BudgetScopeType = "org" | "account" | "service" | "tag" | "region";
-export type ReportType = "chargeback" | "showback" | "executive_summary" | "cost_by_service" | "cost_by_team";
+export type WasteStatus = "open" | "dismissed" | "resolved";
 
-export interface Org {
+export interface Organization {
   id: string;
   name: string;
+  slug: string;
   plan: OrgPlan;
   stripe_customer_id: string | null;
-  stripe_subscription_id: string | null;
   created_at: string;
+  updated_at: string;
 }
 
-export interface OrgMember {
+export interface Member {
+  id: string;
   org_id: string;
   user_id: string;
-  role: OrgMemberRole;
+  role: MemberRole;
   created_at: string;
+  user?: {
+    email: string;
+    full_name?: string;
+    avatar_url?: string;
+  };
 }
 
 export interface CloudAccount {
   id: string;
   org_id: string;
   provider: CloudProvider;
-  name: string;
   account_id: string;
-  credentials_encrypted?: string;
-  status: AccountStatus;
+  account_name: string;
+  credentials_encrypted: string | null;
   last_synced_at: string | null;
+  is_active: boolean;
   created_at: string;
 }
 
@@ -45,9 +47,8 @@ export interface CostRecord {
   region: string | null;
   amount_usd: number;
   currency: string;
-  period_start: string;
-  period_end: string;
-  tags: Record<string, string>;
+  usage_date: string;
+  tags: Record<string, string> | null;
   created_at: string;
 }
 
@@ -55,78 +56,78 @@ export interface Budget {
   id: string;
   org_id: string;
   name: string;
-  scope_type: BudgetScopeType;
-  scope_value: string | null;
-  amount_usd: number;
-  period: BudgetPeriod;
-  alert_threshold_pct: number;
+  cloud_account_id: string | null;
+  filters: Record<string, unknown> | null;
+  monthly_limit_usd: number;
+  alert_at_percent: number;
+  auto_action: "notify" | "restrict" | null;
+  current_spend_usd: number;
   created_at: string;
+  updated_at: string;
 }
 
-export interface BudgetAlert {
+export interface WasteFinding {
   id: string;
-  budget_id: string;
   org_id: string;
-  triggered_at: string;
-  actual_spend: number;
-  budget_amount: number;
-  percentage_used: number;
-  acknowledged_at: string | null;
+  cloud_account_id: string;
+  resource_type: string;
+  resource_id: string;
+  waste_type: string;
+  estimated_monthly_waste_usd: number;
+  recommendation: string;
+  confidence_score: number | null;
+  status: WasteStatus;
+  found_at: string;
+  updated_at: string;
+  cloud_account?: CloudAccount;
 }
 
 export interface Anomaly {
   id: string;
   org_id: string;
-  cloud_account_id: string | null;
-  service: string;
+  cloud_account_id: string;
   detected_at: string;
-  expected_daily_usd: number;
-  actual_daily_usd: number;
+  service: string;
+  spend_actual: number;
+  spend_expected: number;
   deviation_pct: number;
-  status: AnomalyStatus;
   ai_explanation: string | null;
   created_at: string;
+  cloud_account?: CloudAccount;
 }
 
-export interface Recommendation {
-  id: string;
-  org_id: string;
-  cloud_account_id: string | null;
-  resource_type: string;
-  resource_id: string;
-  region: string | null;
-  current_cost_usd: number;
-  recommended_cost_usd: number;
-  savings_usd: number;
-  recommendation: string;
-  status: RecommendationStatus;
-  created_at: string;
+export interface AnalyticsSummary {
+  total_spend_usd: number;
+  total_waste_usd: number;
+  potential_savings_usd: number;
+  budget_utilization_pct: number;
+  spend_by_provider: { provider: CloudProvider; amount: number }[];
+  spend_by_service: { service: string; amount: number }[];
+  daily_trend: { date: string; amount: number; provider?: CloudProvider }[];
+  open_waste_count: number;
+  anomaly_count: number;
 }
 
-export interface Report {
-  id: string;
-  org_id: string;
-  name: string;
-  type: ReportType;
-  config: Record<string, unknown>;
-  last_run_at: string | null;
-  schedule: string | null;
-  created_by: string;
-  created_at: string;
+export interface ApiResponse<T> {
+  data: T | null;
+  error: string | null;
+  meta?: {
+    total?: number;
+    page?: number;
+    per_page?: number;
+  };
 }
 
-export interface PlanLimits {
-  cloud_accounts: number;
-  data_retention_months: number;
-  team_members: number;
-  anomaly_detection: boolean;
-  ai_recommendations: boolean;
-  api_access: boolean;
+export interface PaginationParams {
+  page?: number;
+  per_page?: number;
 }
 
-export interface ForecastPoint {
-  date: string;
-  predicted: number;
-  lower_bound: number;
-  upper_bound: number;
+export interface CostFilters extends PaginationParams {
+  account_id?: string;
+  service?: string;
+  start_date?: string;
+  end_date?: string;
+  region?: string;
+  tags?: Record<string, string>;
 }

@@ -1,0 +1,36 @@
+{
+  "id": "finopsiq",
+  "name": "FinOpsIQ",
+  "tagline": "Automated cloud cost intelligence for engineering teams",
+  "description": "FinOpsIQ is a production-ready enterprise SaaS platform that helps engineering teams take control of their cloud spend. Ingest costs from AWS, GCP, and Azure, detect anomalies with AI, forecast budgets with ML, and generate actionable rightsizing recommendations.",
+  "category": "Cloud Cost Management",
+  "subcategory": "FinOps Automation",
+  "version": "1.0.0",
+  "website": "https://finopsiq.io",
+  "repository": "https://github.com/21leahcimhtiek-oss/finopsiq",
+  "pricing": {
+    "model": "subscription",
+    "currency": "USD",
+    "plans": [
+      { "name": "Starter", "price_monthly": 99, "price_annual": 950 },
+      { "name": "Pro", "price_monthly": 249, "price_annual": 2390 },
+      { "name": "Enterprise", "price_monthly": 599, "price_annual": 5750 }
+    ]
+  },
+  "stack": ["Next.js 14", "TypeScript", "Tailwind CSS", "Supabase", "Stripe", "OpenAI", "Upstash", "Sentry"],
+  "features": [
+    "Multi-cloud cost ingestion (AWS, GCP, Azure)",
+    "AI-powered anomaly detection",
+    "ML-based cost forecasting (30/60/90-day)",
+    "Budget alerts with threshold notifications",
+    "Cost allocation by team/project/environment/tag",
+    "Rightsizing recommendations",
+    "Chargeback and showback reports",
+    "Slack and email alert integrations",
+    "Stripe billing with plan limits"
+  ],
+  "compliance": ["SOC2-ready", "GDPR-aware"],
+  "target_audience": ["Engineering teams", "FinOps practitioners", "Cloud architects", "CTOs", "CFOs"],
+  "created_at": "2024-01-01",
+  "updated_at": "2024-07-01"
+}

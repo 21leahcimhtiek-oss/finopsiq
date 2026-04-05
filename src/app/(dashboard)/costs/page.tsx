@@ -1,76 +1,69 @@
-"use client";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import CostChart from "@/components/CostChart";
 
-import { useEffect, useState } from "react";
-import CostTable from "@/components/CostTable";
-import { CostRecord } from "@/types";
+export const metadata = { title: "Cost Explorer" };
 
-export default function CostsPage() {
-  const [records, setRecords] = useState<CostRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({
-    start_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-    end_date: new Date().toISOString().split("T")[0],
-    service: "",
-    account_id: "",
-  });
+export default async function CostsPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (filters.start_date) params.set("start_date", filters.start_date);
-      if (filters.end_date) params.set("end_date", filters.end_date);
-      if (filters.service) params.set("service", filters.service);
-      if (filters.account_id) params.set("account_id", filters.account_id);
-      const res = await fetch(`/api/costs?${params}`);
-      const json = await res.json();
-      setRecords(json.data ?? []);
-      setLoading(false);
-    }
-    load();
-  }, [filters]);
+  const { data: membership } = await supabase.from("org_members").select("org_id").eq("user_id", user.id).single();
+  if (!membership) redirect("/onboarding");
+
+  const { data: costs } = await supabase
+    .from("cost_records")
+    .select("service, region, amount_usd, period_start, tags")
+    .eq("org_id", membership.org_id)
+    .gte("period_start", new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0])
+    .order("period_start", { ascending: true })
+    .limit(5000);
+
+  const byService = new Map<string, number>();
+  for (const c of costs ?? []) {
+    const k = c.service;
+    byService.set(k, (byService.get(k) ?? 0) + Number(c.amount_usd));
+  }
+  const topServices = Array.from(byService.entries()).sort((a, b) => b[1] - a[1]).slice(0, 10);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Cost Explorer</h1>
-        <p className="text-gray-500 mt-1">Explore and analyze your cloud spending</p>
+        <p className="text-gray-600 mt-1">Analyze cloud spend by service, region, and tag</p>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-wrap gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Start Date</label>
-          <input
-            type="date"
-            value={filters.start_date}
-            onChange={(e) => setFilters((f) => ({ ...f, start_date: e.target.value }))}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">End Date</label>
-          <input
-            type="date"
-            value={filters.end_date}
-            onChange={(e) => setFilters((f) => ({ ...f, end_date: e.target.value }))}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Service</label>
-          <input
-            type="text"
-            value={filters.service}
-            onChange={(e) => setFilters((f) => ({ ...f, service: e.target.value }))}
-            placeholder="e.g. Amazon EC2"
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-          />
-        </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Spend Trend (90 days)</h2>
+        <CostChart data={(costs ?? []).map((c) => ({ date: c.period_start, service: c.service, amount: Number(c.amount_usd) }))} />
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100">
-        <CostTable records={records} loading={loading} />
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Top Services by Spend</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="text-left py-3 px-2 text-gray-600 font-medium">Service</th>
+                <th className="text-right py-3 px-2 text-gray-600 font-medium">Total Spend</th>
+                <th className="text-right py-3 px-2 text-gray-600 font-medium">% of Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topServices.map(([service, amount]) => {
+                const totalAll = topServices.reduce((s, [, a]) => s + a, 0);
+                return (
+                  <tr key={service} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="py-3 px-2 font-medium text-gray-900">{service}</td>
+                    <td className="py-3 px-2 text-right">${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className="py-3 px-2 text-right text-gray-600">{totalAll > 0 ? ((amount / totalAll) * 100).toFixed(1) : 0}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

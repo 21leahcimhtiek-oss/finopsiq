@@ -1,24 +1,29 @@
-import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { stripe } from "@/lib/stripe/client";
 
-export async function POST(request: NextRequest) {
-  const supabase = createClient();
+export async function POST(req: NextRequest) {
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: member } = await supabase.from("members").select("org_id").eq("user_id", user.id).single();
-  const { data: org } = await supabase.from("organizations").select("*").eq("id", member?.org_id).single();
+  const { data: membership } = await supabase.from("org_members")
+    .select("org_id, role, orgs(stripe_customer_id)")
+    .eq("user_id", user.id).single();
 
-  if (!org?.stripe_customer_id) {
-    return NextResponse.json({ error: "No Stripe customer found" }, { status: 400 });
+  if (!membership || membership.role !== "owner") {
+    return NextResponse.json({ error: "Only org owners can manage billing" }, { status: 403 });
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const org = membership.orgs as { stripe_customer_id: string | null } | null;
+  if (!org?.stripe_customer_id) {
+    return NextResponse.json({ error: "No Stripe customer found" }, { status: 404 });
+  }
+
   const session = await stripe.billingPortal.sessions.create({
     customer: org.stripe_customer_id,
-    return_url: `${appUrl}/billing`,
+    return_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing`,
   });
 
-  return NextResponse.json({ data: { url: session.url } });
+  return NextResponse.redirect(session.url);
 }

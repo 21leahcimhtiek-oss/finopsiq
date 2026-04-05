@@ -1,52 +1,58 @@
 # Contributing to FinOpsIQ
 
-Thank you for your interest in contributing! This document covers our development workflow.
+We welcome contributions! Please read this guide before submitting a pull request.
 
-## Development Setup
+## Getting Started
 
-```bash
-git clone https://github.com/21leahcimhtiek-oss/finopsiq
-cd finopsiq
-npm install
-cp .env.example .env.local
-# Fill in credentials
-npm run dev
-```
+1. Fork the repository
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/finopsiq.git`
+3. Install dependencies: `npm install`
+4. Copy env file: `cp .env.example .env.local` and fill in credentials
+5. Start dev server: `npm run dev`
+
+## Development Workflow
+
+1. Create a feature branch: `git checkout -b feat/your-feature-name`
+2. Make your changes
+3. Run tests: `npm test`
+4. Run type check: `npm run type-check`
+5. Run linter: `npm run lint`
+6. Commit with a meaningful message following [Conventional Commits](https://www.conventionalcommits.org/)
+7. Push and open a Pull Request
 
 ## Code Standards
 
-- **TypeScript**: strict mode, no `any` types
-- **Formatting**: Prettier (run `npx prettier --write .`)
-- **Linting**: ESLint with Next.js config (`npm run lint`)
-- **Testing**: Jest for unit, Playwright for E2E. PRs require tests for new features.
+- **TypeScript** — All new code must be TypeScript with strict mode enabled
+- **Components** — React functional components with explicit prop types
+- **API Routes** — Validate all inputs with Zod, use proper HTTP status codes
+- **Error Handling** — Use try/catch in API routes, report errors to Sentry
+- **Testing** — Unit tests required for lib utilities and API routes
+- **Styling** — Use Tailwind utility classes, avoid inline styles
 
-## Branch Strategy
+## Testing Requirements
 
-- `main` — production, protected, CI required
-- `develop` — integration branch
-- `feat/your-feature` — feature branches, branch from `develop`
-- `fix/issue-number` — bug fix branches
+- All new API routes must have corresponding Jest tests
+- UI components should have basic render tests
+- E2E tests for critical user flows (login, account connect, waste scan)
+- Minimum 70% code coverage for new files
 
-## Pull Request Process
+## PR Process
 
-1. Branch from `develop`
-2. Write tests for your changes
-3. Run `npm run typecheck && npm test && npm run lint`
-4. Open PR against `develop` with a clear description
-5. One approval required from a maintainer
-6. Squash merge preferred
+1. PRs must pass all CI checks (type-check, lint, test, build)
+2. At least one maintainer approval required
+3. Squash and merge preferred
+4. Update CHANGELOG.md with your changes
 
-## Reporting Issues
+## Commit Message Format
 
-Use GitHub Issues with the appropriate template:
-- **Bug report**: include steps to reproduce, expected vs actual behavior
-- **Feature request**: describe the use case and proposed solution
+```
+type(scope): description
 
-## Security Vulnerabilities
+feat(waste): add confidence score to AI findings
+fix(api): handle missing cloud credentials gracefully
+docs(api): update endpoint documentation
+```
 
-Do NOT open a public issue. Email security@finopsiq.io with details.
-We aim to acknowledge within 24 hours and patch within 7 days.
+## Questions?
 
-## Code of Conduct
-
-Be respectful, constructive, and collaborative. We follow the Contributor Covenant.
+Open an issue or start a GitHub Discussion.

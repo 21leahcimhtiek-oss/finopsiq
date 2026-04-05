@@ -1,154 +1,101 @@
 import { createClient } from "@/lib/supabase/server";
-import { formatCurrency, formatPercent } from "@/lib/utils";
-import SpendChart from "@/components/SpendChart";
-import {
-  DollarSignIcon,
-  TrashIcon,
-  TrendingDownIcon,
-  GaugeIcon,
-  AlertTriangleIcon,
-} from "lucide-react";
+import { redirect } from "next/navigation";
+import { TrendingUp, TrendingDown, AlertTriangle, DollarSign, Cloud } from "lucide-react";
+import SpendSummary from "@/components/SpendSummary";
+import CostChart from "@/components/CostChart";
 
-async function getAnalytics(orgId: string) {
-  const supabase = createClient();
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-  const [costsResult, wasteResult, budgetsResult, anomaliesResult] = await Promise.all([
-    supabase
-      .from("cost_records")
-      .select("amount_usd, usage_date, service")
-      .eq("org_id", orgId)
-      .gte("usage_date", thirtyDaysAgo.toISOString().split("T")[0]),
-    supabase
-      .from("waste_findings")
-      .select("estimated_monthly_waste_usd, status")
-      .eq("org_id", orgId)
-      .eq("status", "open"),
-    supabase.from("budgets").select("monthly_limit_usd, current_spend_usd").eq("org_id", orgId),
-    supabase
-      .from("anomalies")
-      .select("id, service, deviation_pct, detected_at")
-      .eq("org_id", orgId)
-      .order("detected_at", { ascending: false })
-      .limit(5),
-  ]);
-
-  const totalSpend = (costsResult.data ?? []).reduce((s, r) => s + Number(r.amount_usd), 0);
-  const totalWaste = (wasteResult.data ?? []).reduce((s, r) => s + Number(r.estimated_monthly_waste_usd), 0);
-  const budgetUsage =
-    (budgetsResult.data ?? []).reduce((s, b) => s + Number(b.current_spend_usd), 0) /
-    Math.max((budgetsResult.data ?? []).reduce((s, b) => s + Number(b.monthly_limit_usd), 0), 1) * 100;
-
-  // Build daily trend
-  const dailyMap: Record<string, number> = {};
-  for (const r of costsResult.data ?? []) {
-    dailyMap[r.usage_date] = (dailyMap[r.usage_date] ?? 0) + Number(r.amount_usd);
-  }
-  const trend = Object.entries(dailyMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, amount]) => ({ date, amount }));
-
-  return {
-    totalSpend,
-    totalWaste,
-    potentialSavings: totalWaste * 0.8,
-    budgetUsagePct: budgetUsage,
-    trend,
-    anomalies: anomaliesResult.data ?? [],
-  };
-}
+export const metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const { data: memberData } = await supabase
-    .from("members")
-    .select("org_id")
-    .eq("user_id", user!.id)
+  if (!user) redirect("/login");
+
+  // Get user's org
+  const { data: membership } = await supabase
+    .from("org_members")
+    .select("org_id, orgs(id, name, plan)")
+    .eq("user_id", user.id)
     .single();
 
-  const orgId = memberData?.org_id ?? "";
-  const analytics = orgId ? await getAnalytics(orgId) : null;
+  if (!membership) redirect("/onboarding");
 
-  const kpis = [
-    {
-      label: "Total Cloud Spend (30d)",
-      value: formatCurrency(analytics?.totalSpend ?? 0),
-      icon: DollarSignIcon,
-      color: "text-blue-600",
-      bg: "bg-blue-50",
-    },
-    {
-      label: "Waste Found",
-      value: formatCurrency(analytics?.totalWaste ?? 0),
-      icon: TrashIcon,
-      color: "text-red-600",
-      bg: "bg-red-50",
-    },
-    {
-      label: "Potential Savings",
-      value: formatCurrency(analytics?.potentialSavings ?? 0),
-      icon: TrendingDownIcon,
-      color: "text-green-600",
-      bg: "bg-green-50",
-    },
-    {
-      label: "Budget Utilization",
-      value: formatPercent(analytics?.budgetUsagePct ?? 0),
-      icon: GaugeIcon,
-      color: "text-purple-600",
-      bg: "bg-purple-50",
-    },
+  const orgId = membership.org_id;
+
+  // Fetch dashboard data in parallel
+  const [accountsResult, anomaliesResult, recommendationsResult, costsResult] = await Promise.all([
+    supabase.from("cloud_accounts").select("id, provider, name, status").eq("org_id", orgId),
+    supabase.from("anomalies").select("id, service, deviation_pct, status").eq("org_id", orgId).eq("status", "open").limit(5),
+    supabase.from("recommendations").select("id, savings_usd").eq("org_id", orgId).eq("status", "open"),
+    supabase.from("cost_records")
+      .select("service, amount_usd, period_start")
+      .eq("org_id", orgId)
+      .gte("period_start", new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0])
+      .order("period_start", { ascending: true }),
+  ]);
+
+  const accounts = accountsResult.data ?? [];
+  const anomalies = anomaliesResult.data ?? [];
+  const recommendations = recommendationsResult.data ?? [];
+  const costs = costsResult.data ?? [];
+
+  const totalSavings = recommendations.reduce((sum, r) => sum + Number(r.savings_usd), 0);
+  const currentMonthCosts = costs.filter((c) => {
+    const d = new Date(c.period_start);
+    const now = new Date();
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
+  const totalSpend = currentMonthCosts.reduce((sum, c) => sum + Number(c.amount_usd), 0);
+
+  const stats = [
+    { label: "Cloud Spend (this month)", value: `$${totalSpend.toLocaleString("en-US", { maximumFractionDigits: 0 })}`, icon: DollarSign, color: "text-blue-600", bg: "bg-blue-50" },
+    { label: "Active Accounts", value: accounts.filter((a) => a.status === "active").length.toString(), icon: Cloud, color: "text-purple-600", bg: "bg-purple-50" },
+    { label: "Open Anomalies", value: anomalies.length.toString(), icon: AlertTriangle, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: "Potential Savings", value: `$${totalSavings.toLocaleString("en-US", { maximumFractionDigits: 0 })}`, icon: TrendingDown, color: "text-green-600", bg: "bg-green-50" },
   ];
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 mt-1">Cloud cost overview for the last 30 days</p>
+        <p className="text-gray-600 mt-1">Cloud cost overview for your organization</p>
       </div>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpis.map((kpi) => (
-          <div key={kpi.label} className="bg-white rounded-xl border border-gray-100 p-5">
+        {stats.map((stat) => (
+          <div key={stat.label} className="bg-white rounded-xl border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-gray-500">{kpi.label}</p>
-              <div className={`w-8 h-8 ${kpi.bg} rounded-lg flex items-center justify-center`}>
-                <kpi.icon className={`w-4 h-4 ${kpi.color}`} />
+              <span className="text-sm text-gray-600">{stat.label}</span>
+              <div className={`w-8 h-8 ${stat.bg} rounded-lg flex items-center justify-center`}>
+                <stat.icon className={`w-4 h-4 ${stat.color}`} />
               </div>
             </div>
-            <p className="text-2xl font-bold text-gray-900">{kpi.value}</p>
+            <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
           </div>
         ))}
       </div>
 
-      {/* Spend Chart */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <h2 className="font-semibold text-gray-900 mb-4">Spend Trend (30 days)</h2>
-        <SpendChart data={analytics?.trend ?? []} />
-      </div>
-
-      {/* Recent Anomalies */}
-      {(analytics?.anomalies ?? []).length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <AlertTriangleIcon className="w-5 h-5 text-amber-500" />
-            <h2 className="font-semibold text-gray-900">Recent Anomalies</h2>
-          </div>
-          <div className="space-y-3">
-            {analytics!.anomalies.map((a) => (
-              <div key={a.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                <span className="text-sm font-medium text-gray-700">{a.service}</span>
-                <span className="text-sm font-semibold text-red-600">
-                  +{Number(a.deviation_pct).toFixed(1)}%
-                </span>
-              </div>
-            ))}
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Cost Trend (60 days)</h2>
+          <CostChart data={costs.map((c) => ({ date: c.period_start, service: c.service, amount: Number(c.amount_usd) }))} />
         </div>
-      )}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Anomalies</h2>
+          {anomalies.length === 0 ? (
+            <p className="text-gray-500 text-sm">No open anomalies. Looking good!</p>
+          ) : (
+            <ul className="space-y-3">
+              {anomalies.map((a) => (
+                <li key={a.id} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg">
+                  <span className="text-sm font-medium text-gray-800">{a.service}</span>
+                  <span className="text-sm font-bold text-amber-700">+{Number(a.deviation_pct).toFixed(0)}%</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,117 +1,55 @@
-"use client";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { Plus } from "lucide-react";
+import BudgetProgress from "@/components/BudgetProgress";
 
-import { useEffect, useState } from "react";
-import { Budget } from "@/types";
-import BudgetBar from "@/components/BudgetBar";
-import { PlusIcon } from "lucide-react";
+export const metadata = { title: "Budgets" };
 
-export default function BudgetsPage() {
-  const [budgets, setBudgets] = useState<Budget[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ name: "", monthly_limit_usd: "", alert_at_percent: "80" });
-  const [saving, setSaving] = useState(false);
+export default async function BudgetsPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  useEffect(() => {
-    fetch("/api/budgets")
-      .then((r) => r.json())
-      .then((d) => { setBudgets(d.data ?? []); setLoading(false); });
-  }, []);
+  const { data: membership } = await supabase.from("org_members").select("org_id").eq("user_id", user.id).single();
+  if (!membership) redirect("/onboarding");
 
-  async function createBudget(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    const res = await fetch("/api/budgets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: form.name,
-        monthly_limit_usd: parseFloat(form.monthly_limit_usd),
-        alert_at_percent: parseFloat(form.alert_at_percent),
-      }),
-    });
-    const json = await res.json();
-    if (json.data) {
-      setBudgets((prev) => [...prev, json.data]);
-      setShowModal(false);
-      setForm({ name: "", monthly_limit_usd: "", alert_at_percent: "80" });
-    }
-    setSaving(false);
-  }
+  const [budgetsResult, costsResult] = await Promise.all([
+    supabase.from("budgets").select("*").eq("org_id", membership.org_id).order("created_at", { ascending: false }),
+    supabase.from("cost_records")
+      .select("amount_usd, period_start")
+      .eq("org_id", membership.org_id)
+      .gte("period_start", new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0]),
+  ]);
+
+  const budgets = budgetsResult.data ?? [];
+  const currentMonthSpend = (costsResult.data ?? []).reduce((sum, c) => sum + Number(c.amount_usd), 0);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Budgets</h1>
-          <p className="text-gray-500 mt-1">Monitor and enforce cloud spending limits</p>
+          <p className="text-gray-600 mt-1">{budgets.length} budgets configured</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700"
-        >
-          <PlusIcon className="w-4 h-4" /> New Budget
-        </button>
+        <Link href="/budgets/new" className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+          <Plus className="w-4 h-4" /> Create Budget
+        </Link>
       </div>
 
-      {loading ? (
-        <div className="text-center py-12 text-gray-400">Loading budgets...</div>
-      ) : budgets.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">No budgets yet. Create one to start tracking.</div>
+      {budgets.length === 0 ? (
+        <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center">
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No budgets yet</h3>
+          <p className="text-gray-600 mb-4">Create budget alerts to get notified when spend exceeds your thresholds.</p>
+          <Link href="/budgets/new" className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+            <Plus className="w-4 h-4" /> Create your first budget
+          </Link>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {budgets.map((b) => <BudgetBar key={b.id} budget={b} />)}
-        </div>
-      )}
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-            <h2 className="text-lg font-semibold mb-4">Create Budget</h2>
-            <form onSubmit={createBudget} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Budget Name</label>
-                <input
-                  required
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Production AWS"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Limit (USD)</label>
-                <input
-                  required
-                  type="number"
-                  min="1"
-                  value={form.monthly_limit_usd}
-                  onChange={(e) => setForm((f) => ({ ...f, monthly_limit_usd: e.target.value }))}
-                  placeholder="5000"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Alert at (%)</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={form.alert_at_percent}
-                  onChange={(e) => setForm((f) => ({ ...f, alert_at_percent: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 border border-gray-200 rounded-lg py-2 text-sm">
-                  Cancel
-                </button>
-                <button type="submit" disabled={saving} className="flex-1 bg-primary-600 text-white rounded-lg py-2 text-sm disabled:opacity-50">
-                  {saving ? "Creating..." : "Create"}
-                </button>
-              </div>
-            </form>
-          </div>
+          {budgets.map((budget) => (
+            <BudgetProgress key={budget.id} budget={budget} currentSpend={currentMonthSpend} />
+          ))}
         </div>
       )}
     </div>

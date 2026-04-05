@@ -1,230 +1,99 @@
 # FinOpsIQ API Reference
 
-All API endpoints require authentication. Include your session token via Supabase Auth cookies (handled automatically by the Next.js client).
+All endpoints require JWT auth via `Authorization: Bearer <token>` header (or Supabase session cookie).
 
-## Base URL
+Base URL: `https://your-domain.com/api`
 
-```
-https://your-app.vercel.app/api
-```
+## Accounts
 
-## Authentication
+### GET /api/accounts
+List all cloud accounts for the authenticated org.
 
-API routes use Supabase server-side auth. The session is read from cookies automatically. For server-to-server calls, include the `Authorization: Bearer <token>` header.
+### POST /api/accounts
+Create a new cloud account.
 
-## Rate Limits
+Body: `{ name, provider, credentials_json }`  
+Credentials are AES-256-GCM encrypted before storage.
 
-- General endpoints: 100 requests/minute per user
-- AI endpoints: 10 requests/minute per user
+### GET /api/accounts/:id
+Get a specific cloud account.
 
----
+### PATCH /api/accounts/:id
+Update a cloud account.
 
-## Cloud Accounts
+### DELETE /api/accounts/:id
+Delete a cloud account and all associated cost records.
 
-### List Accounts
-`GET /api/accounts`
+### POST /api/accounts/:id/sync
+Upload a CSV file to import cost records.
 
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": "uuid",
-      "provider": "aws",
-      "account_id": "123456789012",
-      "account_name": "Production AWS",
-      "last_synced_at": "2024-01-15T12:00:00Z",
-      "is_active": true,
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  ],
-  "error": null
-}
-```
+Body: `multipart/form-data` with `file` field (CSV).
 
-### Create Account
-`POST /api/accounts`
+Response: `{ records_inserted: number }`  
+Rate limited to 60 req/min.
 
-**Body:**
-```json
-{
-  "provider": "aws",
-  "account_id": "123456789012",
-  "account_name": "Production AWS",
-  "credentials": "arn:aws:iam::123456789012:role/FinOpsIQRole"
-}
-```
+## Costs
 
-### Sync Account
-`POST /api/accounts/:id/sync`
+### GET /api/costs
+Get cost records. Requires `start` and `end` query params (ISO date).
 
-Triggers a cost data sync for the specified account (fetches last 30 days).
-
-**Response:**
-```json
-{ "data": { "synced": 180 } }
-```
-
----
-
-## Cost Records
-
-### Query Costs
-`GET /api/costs`
-
-**Query Parameters:**
-| Param | Type | Description |
-|-------|------|-------------|
-| `account_id` | uuid | Filter by cloud account |
-| `service` | string | Filter by service name (partial match) |
-| `start_date` | YYYY-MM-DD | Start of date range |
-| `end_date` | YYYY-MM-DD | End of date range |
-| `region` | string | Filter by region |
-| `page` | number | Page number (default: 1) |
-| `per_page` | number | Results per page (default: 50, max: 100) |
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": "uuid",
-      "service": "Amazon EC2",
-      "resource_id": "i-0abc123",
-      "region": "us-east-1",
-      "amount_usd": 120.50,
-      "currency": "USD",
-      "usage_date": "2024-01-15",
-      "tags": { "env": "prod", "team": "platform" }
-    }
-  ],
-  "meta": { "total": 450, "page": 1, "per_page": 50 }
-}
-```
-
----
-
-## Waste Detection
-
-### Get Findings
-`GET /api/waste?status=open`
-
-Status options: `open`, `dismissed`, `resolved`
-
-### Run AI Scan
-`POST /api/waste`
-
-Triggers GPT-4o waste analysis across all active cloud accounts.
-
-**Response:**
-```json
-{ "data": { "findings": 7 } }
-```
-
-### Update Finding Status
-`PATCH /api/waste/:id`
-
-**Body:**
-```json
-{ "status": "resolved" }
-```
-
----
-
-## Budgets
-
-### List Budgets
-`GET /api/budgets`
-
-### Create Budget
-`POST /api/budgets`
-
-**Body:**
-```json
-{
-  "name": "Production AWS",
-  "monthly_limit_usd": 5000,
-  "alert_at_percent": 80,
-  "auto_action": "notify"
-}
-```
-
-### Update Budget
-`PATCH /api/budgets/:id`
-
-### Delete Budget
-`DELETE /api/budgets/:id`
-
----
+Optional: `account_id`, `service`, `region`  
+Rate limited to 60 req/min.
 
 ## Anomalies
 
-### Get Anomaly Feed
-`GET /api/anomalies`
+### GET /api/anomalies
+List anomalies. Optional `status` filter (open/acknowledged/resolved).
 
-**Query Parameters:** `page`, `per_page`
+### PATCH /api/anomalies/:id
+Update anomaly status.
 
----
+Body: `{ status: 'open' | 'acknowledged' | 'resolved' }`  
+AI detection rate limited to 5 req/min.
 
-## Analytics
+## Budgets
 
-### Get Summary
-`GET /api/analytics`
+### GET /api/budgets
+List all budgets for the org.
 
-**Response:**
-```json
-{
-  "data": {
-    "total_spend_usd": 45230.50,
-    "total_waste_usd": 8400.00,
-    "potential_savings_usd": 6720.00,
-    "budget_utilization_pct": 67.5,
-    "spend_by_service": [
-      { "service": "Amazon EC2", "amount": 18000 }
-    ],
-    "daily_trend": [
-      { "date": "2024-01-15", "amount": 1500.25 }
-    ],
-    "open_waste_count": 12,
-    "anomaly_count": 3
-  }
-}
-```
+### POST /api/budgets
+Create a budget.
 
----
+Body: `{ name, amount_usd, period, scope_type, scope_value, alert_threshold_pct }`  
+### PATCH /api/budgets/:id
+Update a budget.
+
+### DELETE /api/budgets/:id
+Delete a budget.
+
+## Recommendations
+
+### GET /api/recommendations
+List recommendations. Optional `status` filter.
+
+### PATCH /api/recommendations/:id
+Update recommendation status (open/implementing/dismissed/implemented).
 
 ## Billing
 
-### Create Checkout Session
-`POST /api/billing/create-checkout`
+### POST /api/billing/create-checkout
+Create Stripe checkout session.
 
-**Body:**
-```json
-{ "price_id": "price_xxx" }
-```
+Body: `{ plan: 'starter' | 'pro' | 'enterprise' }`  
+Response: `{ url: string }` (redirect to Stripe)
 
-**Response:**
-```json
-{ "data": { "url": "https://checkout.stripe.com/pay/xxx" } }
-```
+### POST /api/billing/portal
+Create Stripe customer portal session.
 
-### Open Billing Portal
-`POST /api/billing/portal`
+Response: `{ url: string }`  
 
-**Response:**
-```json
-{ "data": { "url": "https://billing.stripe.com/session/xxx" } }
-```
+### POST /api/billing/webhook
+Stripe webhook endpoint (no auth required, validates Stripe signature).
 
----
+## Auth
 
-## Error Codes
+### POST /api/auth/invite
+Invite a user to the org.
 
-| Code | Description |
-|------|-------------|
-| 400 | Bad request / validation error |
-| 401 | Not authenticated |
-| 403 | Insufficient permissions |
-| 404 | Resource not found |
-| 429 | Rate limit exceeded |
-| 500 | Internal server error |
+Body: `{ email: string }`  
+Requires admin role.

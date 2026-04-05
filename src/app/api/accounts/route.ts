@@ -1,71 +1,80 @@
-import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { createClient } from "@/lib/supabase/server";
+import { encrypt } from "@/lib/crypto/encrypt";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { PLAN_LIMITS } from "@/lib/stripe/client";
+import { z } from "zod";
 
-const CreateAccountSchema = z.object({
+const createSchema = z.object({
   provider: z.enum(["aws", "gcp", "azure"]),
-  account_id: z.string().min(1),
-  account_name: z.string().min(1),
+  name: z.string().min(2).max(100),
+  account_id: z.string().min(4).max(100),
   credentials: z.string().optional(),
 });
 
-async function getOrgId(supabase: ReturnType<typeof createClient>, userId: string) {
-  const { data } = await supabase.from("members").select("org_id").eq("user_id", userId).single();
-  return data?.org_id;
-}
-
-export async function GET(request: NextRequest) {
-  const supabase = createClient();
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ data: null, error: "Unauthorized" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { success } = await checkRateLimit(user.id);
   if (!success) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
-  const orgId = await getOrgId(supabase, user.id);
-  if (!orgId) return NextResponse.json({ data: [], error: null });
+  const { data: membership } = await supabase.from("org_members").select("org_id").eq("user_id", user.id).single();
+  if (!membership) return NextResponse.json({ error: "No organization found" }, { status: 404 });
 
-  const { data, error } = await supabase
+  const { data: accounts, error } = await supabase
     .from("cloud_accounts")
-    .select("*")
-    .eq("org_id", orgId)
+    .select("id, org_id, provider, name, account_id, status, last_synced_at, created_at")
+    .eq("org_id", membership.org_id)
     .order("created_at", { ascending: false });
 
-  return NextResponse.json({ data: data ?? [], error: error?.message ?? null });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ accounts });
 }
 
-export async function POST(request: NextRequest) {
-  const supabase = createClient();
+export async function POST(req: NextRequest) {
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ data: null, error: "Unauthorized" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await request.json();
-  const parsed = CreateAccountSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ data: null, error: parsed.error.message }, { status: 400 });
-  }
+  const { success } = await checkRateLimit(user.id);
+  if (!success) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
-  const orgId = await getOrgId(supabase, user.id);
-  if (!orgId) return NextResponse.json({ error: "No organization found" }, { status: 400 });
+  const body = await req.json();
+  const parsed = createSchema.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: "Invalid input", details: parsed.error.flatten() }, { status: 400 });
 
-  // In production: encrypt credentials with KMS before storing
-  const credentialsEncrypted = parsed.data.credentials
-    ? Buffer.from(parsed.data.credentials).toString("base64")
-    : null;
-
-  const { data, error } = await supabase
-    .from("cloud_accounts")
-    .insert({
-      org_id: orgId,
-      provider: parsed.data.provider,
-      account_id: parsed.data.account_id,
-      account_name: parsed.data.account_name,
-      credentials_encrypted: credentialsEncrypted,
-    })
-    .select()
+  const { data: membership } = await supabase.from("org_members")
+    .select("org_id, role, orgs(plan)")
+    .eq("user_id", user.id)
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ data }, { status: 201 });
+  if (!membership || !["owner", "admin"].includes(membership.role)) {
+    return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+  }
+
+  const org = membership.orgs as { plan: string } | null;
+  const limits = PLAN_LIMITS[org?.plan ?? "starter"];
+
+  if (limits.cloud_accounts !== -1) {
+    const { count } = await supabase.from("cloud_accounts").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id);
+    if ((count ?? 0) >= limits.cloud_accounts) {
+      return NextResponse.json({ error: `Your plan allows a maximum of ${limits.cloud_accounts} cloud accounts. Please upgrade.` }, { status: 403 });
+    }
+  }
+
+  const encryptedCredentials = parsed.data.credentials ? encrypt(parsed.data.credentials) : null;
+
+  const { data: account, error } = await supabase.from("cloud_accounts").insert({
+    org_id: membership.org_id,
+    provider: parsed.data.provider,
+    name: parsed.data.name,
+    account_id: parsed.data.account_id,
+    credentials_encrypted: encryptedCredentials,
+    status: "pending",
+  }).select("id, provider, name, account_id, status, created_at").single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ account }, { status: 201 });
 }

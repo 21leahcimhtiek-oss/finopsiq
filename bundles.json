@@ -1,0 +1,36 @@
+{
+  "bundles": [
+    {
+      "id": "aurora-data-suite",
+      "name": "Aurora Data Suite",
+      "description": "Bundle FinOpsIQ with DataBridge for complete cloud data operations — cost intelligence plus automated data pipeline management at a 20% discount.",
+      "products": [
+        {
+          "id": "finopsiq",
+          "name": "FinOpsIQ",
+          "base_price_monthly": 249,
+          "plan": "pro"
+        },
+        {
+          "id": "databridge",
+          "name": "DataBridge",
+          "base_price_monthly": 199,
+          "plan": "pro"
+        }
+      ],
+      "discount_pct": 20,
+      "bundle_price_monthly": 358,
+      "bundle_price_annual": 3437,
+      "savings_monthly": 90,
+      "tagline": "Cloud cost intelligence + automated data pipelines",
+      "features": [
+        "All FinOpsIQ Pro features",
+        "All DataBridge Pro features",
+        "Unified billing dashboard",
+        "Cross-product analytics",
+        "Priority support",
+        "20% savings vs individual plans"
+      ]
+    }
+  ]
+}

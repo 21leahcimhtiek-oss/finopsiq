@@ -1,26 +1,19 @@
 const nextJest = require("next/jest");
-
 const createJestConfig = nextJest({ dir: "./" });
-
-/** @type {import("jest").Config} */
-const customConfig = {
+const customJestConfig = {
   setupFilesAfterFramework: ["<rootDir>/jest.setup.ts"],
+  setupFilesAfterFramework: [],
+  setupFiles: ["<rootDir>/jest.setup.ts"],
   testEnvironment: "jest-environment-jsdom",
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
-  testPathIgnorePatterns: [
-    "<rootDir>/.next/",
-    "<rootDir>/node_modules/",
-    "<rootDir>/e2e/",
-  ],
+  testPathIgnorePatterns: ["<rootDir>/.next/", "<rootDir>/node_modules/", "<rootDir>/e2e/"],
   collectCoverageFrom: [
-    "src/**/*.{js,jsx,ts,tsx}",
+    "src/**/*.{ts,tsx}",
     "!src/**/*.d.ts",
+    "!src/app/layout.tsx",
+    "!src/app/globals.css",
   ],
-  transform: {
-    "^.+\\.(ts|tsx)$": ["ts-jest", { tsconfig: { jsx: "react" } }],
-  },
 };
-
-module.exports = createJestConfig(customConfig);
+module.exports = createJestConfig(customJestConfig);
